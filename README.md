@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <div align="center">
   <img alt="logo" width="120" height="120" src="./src/common/assets/images/layouts/logo.png">
   <h1>V3 Admin Vite</h1>
@@ -231,3 +232,6 @@ New attempts, welcome to follow
 ## License
 
 [MIT](./LICENSE) License © 2022-PRESENT [pany](https://github.com/pany-ang)
+=======
+# ecommerce-admin
+>>>>>>> 36ed95110a667ba6ba7da3d2daad620812195585
