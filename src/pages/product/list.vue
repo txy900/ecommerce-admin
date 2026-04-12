@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import type { FormInstance, FormRules } from "element-plus"
 import { ElMessage } from "element-plus"
 import { onMounted, reactive, ref } from "vue"
 
-// 定义商品类型
 interface Product {
   id: number
   name: string
@@ -11,13 +11,11 @@ interface Product {
   status: "上架" | "下架"
 }
 
-// localStorage 的 key
 const STORAGE_KEY = "ecommerce_products"
-
-// 响应式数据
 const productList = ref<Product[]>([])
 
-// 弹窗相关
+// 表单相关
+const formRef = ref<FormInstance>()
 const dialogVisible = ref(false)
 const dialogTitle = ref("")
 const currentProduct = reactive<Product>({
@@ -33,18 +31,34 @@ let editId = -1
 const deleteDialogVisible = ref(false)
 let deleteIndex = -1
 
-// 保存数据到 localStorage
+// 校验规则
+const rules: FormRules = {
+  name: [
+    { required: true, message: "商品名称不能为空", trigger: "blur" },
+    { min: 1, max: 50, message: "长度在 1 到 50 个字符", trigger: "blur" }
+  ],
+  price: [
+    { required: true, message: "价格不能为空", trigger: "blur" },
+    { type: "number", min: 0, message: "价格必须大于等于 0", trigger: "blur" }
+  ],
+  stock: [
+    { required: true, message: "库存不能为空", trigger: "blur" },
+    { type: "number", min: 0, message: "库存必须大于等于 0", trigger: "blur" }
+  ],
+  status: [
+    { required: true, message: "请选择状态", trigger: "change" }
+  ]
+}
+
 function saveToLocalStorage() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(productList.value))
 }
 
-// 加载数据（初始化）
 function loadData() {
   const stored = localStorage.getItem(STORAGE_KEY)
   if (stored) {
     productList.value = JSON.parse(stored)
   } else {
-    // 默认数据
     productList.value = [
       { id: 1, name: "苹果", price: 5, stock: 100, status: "上架" },
       { id: 2, name: "香蕉", price: 3, stock: 50, status: "上架" },
@@ -54,10 +68,8 @@ function loadData() {
   }
 }
 
-// 新增商品
 function addProduct() {
   dialogTitle.value = "新增商品"
-  // 重置表单
   currentProduct.id = 0
   currentProduct.name = ""
   currentProduct.price = 0
@@ -65,60 +77,62 @@ function addProduct() {
   currentProduct.status = "上架"
   editId = -1
   dialogVisible.value = true
+  // 清除校验
+  formRef.value?.clearValidate()
 }
 
-// 编辑商品
 function editProduct(row: Product) {
   dialogTitle.value = "编辑商品"
   Object.assign(currentProduct, row)
   editId = row.id
   dialogVisible.value = true
+  formRef.value?.clearValidate()
 }
 
-// 保存商品（新增或编辑）
-function saveProduct() {
-  if (editId === -1) {
-    // 新增：生成新 id
-    const newId = Math.max(...productList.value.map(p => p.id), 0) + 1
-    const newProduct: Product = {
-      id: newId,
-      name: currentProduct.name,
-      price: currentProduct.price,
-      stock: currentProduct.stock,
-      status: currentProduct.status
+async function saveProduct() {
+  if (!formRef.value) return
+  try {
+    await formRef.value.validate()
+    if (editId === -1) {
+      const newId = Math.max(...productList.value.map(p => p.id), 0) + 1
+      const newProduct: Product = {
+        id: newId,
+        name: currentProduct.name,
+        price: currentProduct.price,
+        stock: currentProduct.stock,
+        status: currentProduct.status
+      }
+      productList.value.push(newProduct)
+      ElMessage.success("新增成功")
+    } else {
+      const index = productList.value.findIndex(p => p.id === editId)
+      if (index !== -1) {
+        productList.value[index] = { ...currentProduct }
+        ElMessage.success("保存成功")
+      }
     }
-    productList.value.push(newProduct)
-    ElMessage.success("新增成功")
-  } else {
-    // 编辑：找到索引替换
-    const index = productList.value.findIndex(p => p.id === editId)
-    if (index !== -1) {
-      productList.value[index] = { ...currentProduct }
-      ElMessage.success("保存成功")
-    }
+    dialogVisible.value = false
+    saveToLocalStorage()
+  } catch (error) {
+    console.log("表单验证失败", error)
   }
-  dialogVisible.value = false
-  saveToLocalStorage() // 保存到 localStorage
 }
 
-// 删除商品（打开确认框）
 function deleteProduct(index: number) {
   deleteIndex = index
   deleteDialogVisible.value = true
 }
 
-// 确认删除
 function confirmDelete() {
   if (deleteIndex !== -1) {
     productList.value.splice(deleteIndex, 1)
     ElMessage.success("删除成功")
     deleteDialogVisible.value = false
     deleteIndex = -1
-    saveToLocalStorage() // 保存到 localStorage
+    saveToLocalStorage()
   }
 }
 
-// 组件挂载时加载数据
 onMounted(() => {
   loadData()
 })
@@ -155,17 +169,17 @@ onMounted(() => {
 
     <!-- 编辑/新增弹窗 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="30%">
-      <el-form :model="currentProduct" label-width="80px">
-        <el-form-item label="商品名称">
+      <el-form ref="formRef" :model="currentProduct" :rules="rules" label-width="80px">
+        <el-form-item label="商品名称" prop="name">
           <el-input v-model="currentProduct.name" />
         </el-form-item>
-        <el-form-item label="价格">
+        <el-form-item label="价格" prop="price">
           <el-input-number v-model="currentProduct.price" :min="0" />
         </el-form-item>
-        <el-form-item label="库存">
+        <el-form-item label="库存" prop="stock">
           <el-input-number v-model="currentProduct.stock" :min="0" />
         </el-form-item>
-        <el-form-item label="状态">
+        <el-form-item label="状态" prop="status">
           <el-select v-model="currentProduct.status">
             <el-option label="上架" value="上架" />
             <el-option label="下架" value="下架" />
@@ -182,7 +196,7 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 删除确认弹窗 -->
+    <!-- 删除确认弹窗（保持不变） -->
     <el-dialog v-model="deleteDialogVisible" title="确认删除" width="30%" center>
       <span>确定要删除该商品吗？</span>
       <template #footer>

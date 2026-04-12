@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { FormInstance, FormRules } from "element-plus"
 import { ElMessage } from "element-plus"
 import { onMounted, reactive, ref } from "vue"
 
@@ -12,9 +13,9 @@ interface Order {
 }
 
 const STORAGE_KEY = "ecommerce_orders"
-
 const orderList = ref<Order[]>([])
 
+const formRef = ref<FormInstance>()
 const dialogVisible = ref(false)
 const dialogTitle = ref("")
 const currentOrder = reactive<Order>({
@@ -29,6 +30,17 @@ let editId = -1
 
 const deleteDialogVisible = ref(false)
 let deleteIndex = -1
+
+const rules: FormRules = {
+  orderNo: [{ required: true, message: "订单号不能为空", trigger: "blur" }],
+  productName: [{ required: true, message: "商品名称不能为空", trigger: "blur" }],
+  userName: [{ required: true, message: "用户名不能为空", trigger: "blur" }],
+  amount: [
+    { required: true, message: "金额不能为空", trigger: "blur" },
+    { type: "number", min: 0, message: "金额必须大于等于 0", trigger: "blur" }
+  ],
+  status: [{ required: true, message: "请选择状态", trigger: "change" }]
+}
 
 function saveToLocalStorage() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(orderList.value))
@@ -58,6 +70,7 @@ function addOrder() {
   currentOrder.status = "处理中"
   editId = -1
   dialogVisible.value = true
+  formRef.value?.clearValidate()
 }
 
 function editOrder(row: Order) {
@@ -65,30 +78,37 @@ function editOrder(row: Order) {
   Object.assign(currentOrder, row)
   editId = row.id
   dialogVisible.value = true
+  formRef.value?.clearValidate()
 }
 
-function saveOrder() {
-  if (editId === -1) {
-    const newId = Math.max(...orderList.value.map(o => o.id), 0) + 1
-    const newOrder: Order = {
-      id: newId,
-      orderNo: currentOrder.orderNo,
-      productName: currentOrder.productName,
-      userName: currentOrder.userName,
-      amount: currentOrder.amount,
-      status: currentOrder.status
+async function saveOrder() {
+  if (!formRef.value) return
+  try {
+    await formRef.value.validate()
+    if (editId === -1) {
+      const newId = Math.max(...orderList.value.map(o => o.id), 0) + 1
+      const newOrder: Order = {
+        id: newId,
+        orderNo: currentOrder.orderNo,
+        productName: currentOrder.productName,
+        userName: currentOrder.userName,
+        amount: currentOrder.amount,
+        status: currentOrder.status
+      }
+      orderList.value.push(newOrder)
+      ElMessage.success("新增成功")
+    } else {
+      const index = orderList.value.findIndex(o => o.id === editId)
+      if (index !== -1) {
+        orderList.value[index] = { ...currentOrder }
+        ElMessage.success("保存成功")
+      }
     }
-    orderList.value.push(newOrder)
-    ElMessage.success("新增成功")
-  } else {
-    const index = orderList.value.findIndex(o => o.id === editId)
-    if (index !== -1) {
-      orderList.value[index] = { ...currentOrder }
-      ElMessage.success("保存成功")
-    }
+    dialogVisible.value = false
+    saveToLocalStorage()
+  } catch (error) {
+    console.log("表单验证失败", error)
   }
-  dialogVisible.value = false
-  saveToLocalStorage()
 }
 
 function deleteOrder(index: number) {
@@ -141,22 +161,21 @@ onMounted(() => {
       </el-table-column>
     </el-table>
 
-    <!-- 编辑/新增弹窗 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="30%">
-      <el-form :model="currentOrder" label-width="80px">
-        <el-form-item label="订单号">
+      <el-form ref="formRef" :model="currentOrder" :rules="rules" label-width="80px">
+        <el-form-item label="订单号" prop="orderNo">
           <el-input v-model="currentOrder.orderNo" />
         </el-form-item>
-        <el-form-item label="商品">
+        <el-form-item label="商品" prop="productName">
           <el-input v-model="currentOrder.productName" />
         </el-form-item>
-        <el-form-item label="用户">
+        <el-form-item label="用户" prop="userName">
           <el-input v-model="currentOrder.userName" />
         </el-form-item>
-        <el-form-item label="金额">
+        <el-form-item label="金额" prop="amount">
           <el-input-number v-model="currentOrder.amount" :min="0" />
         </el-form-item>
-        <el-form-item label="状态">
+        <el-form-item label="状态" prop="status">
           <el-select v-model="currentOrder.status">
             <el-option label="处理中" value="处理中" />
             <el-option label="已完成" value="已完成" />
@@ -174,7 +193,6 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 删除确认弹窗 -->
     <el-dialog v-model="deleteDialogVisible" title="确认删除" width="30%" center>
       <span>确定要删除该订单吗？</span>
       <template #footer>
