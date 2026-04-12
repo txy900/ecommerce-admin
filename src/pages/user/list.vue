@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from "element-plus"
-import { reactive, ref } from "vue"
+import { onMounted, reactive, ref } from "vue"
 
-// 用户数据接口
 interface User {
   id: number
   username: string
@@ -12,17 +11,12 @@ interface User {
   createTime: string
 }
 
-// 假数据
-const userList = ref<User[]>([
-  { id: 1, username: "admin", email: "admin@example.com", role: "管理员", status: "启用", createTime: "2025-01-10 09:00" },
-  { id: 2, username: "zhang_san", email: "zhangsan@example.com", role: "普通用户", status: "启用", createTime: "2025-02-15 14:20" },
-  { id: 3, username: "li_si", email: "lisi@example.com", role: "普通用户", status: "停用", createTime: "2025-03-01 10:30" },
-  { id: 4, username: "wang_wu", email: "wangwu@example.com", role: "VIP", status: "启用", createTime: "2025-03-10 16:45" }
-])
+const STORAGE_KEY = "ecommerce_users"
 
-// 弹窗相关
+const userList = ref<User[]>([])
+
 const dialogVisible = ref(false)
-const dialogTitle = ref("新增用户")
+const dialogTitle = ref("")
 const currentUser = reactive<User>({
   id: 0,
   username: "",
@@ -33,17 +27,33 @@ const currentUser = reactive<User>({
 })
 let editId = -1
 
-// 删除弹窗相关
 const deleteDialogVisible = ref(false)
 let deleteIndex = -1
 
-// 辅助函数：获取当前时间字符串
 function getCurrentTime() {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
 }
 
-// 新增用户
+function saveToLocalStorage() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(userList.value))
+}
+
+function loadData() {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored) {
+    userList.value = JSON.parse(stored)
+  } else {
+    userList.value = [
+      { id: 1, username: "admin", email: "admin@example.com", role: "管理员", status: "启用", createTime: "2025-01-10 09:00" },
+      { id: 2, username: "zhang_san", email: "zhangsan@example.com", role: "普通用户", status: "启用", createTime: "2025-02-15 14:20" },
+      { id: 3, username: "li_si", email: "lisi@example.com", role: "普通用户", status: "停用", createTime: "2025-03-01 10:30" },
+      { id: 4, username: "wang_wu", email: "wangwu@example.com", role: "VIP", status: "启用", createTime: "2025-03-10 16:45" }
+    ]
+    saveToLocalStorage()
+  }
+}
+
 function addUser() {
   dialogTitle.value = "新增用户"
   currentUser.id = 0
@@ -56,7 +66,6 @@ function addUser() {
   dialogVisible.value = true
 }
 
-// 编辑用户
 function editUser(row: User) {
   dialogTitle.value = "编辑用户"
   Object.assign(currentUser, row)
@@ -64,10 +73,8 @@ function editUser(row: User) {
   dialogVisible.value = true
 }
 
-// 保存用户
 function saveUser() {
   if (editId === -1) {
-    // 新增：生成新id
     const newId = Math.max(...userList.value.map(u => u.id), 0) + 1
     const newUser: User = {
       id: newId,
@@ -80,33 +87,36 @@ function saveUser() {
     userList.value.push(newUser)
     ElMessage.success("新增成功")
   } else {
-    // 编辑：找到对应索引替换
     const index = userList.value.findIndex(u => u.id === editId)
     if (index !== -1) {
-      // 保留原有的 createTime 不变
+      // 保留原有的 createTime
       const updatedUser = { ...currentUser, createTime: userList.value[index].createTime }
       userList.value[index] = updatedUser
       ElMessage.success("保存成功")
     }
   }
   dialogVisible.value = false
+  saveToLocalStorage()
 }
 
-// 删除用户（打开确认弹窗）
 function deleteUser(index: number) {
   deleteIndex = index
   deleteDialogVisible.value = true
 }
 
-// 确认删除
 function confirmDelete() {
   if (deleteIndex !== -1) {
     userList.value.splice(deleteIndex, 1)
     ElMessage.success("删除成功")
     deleteDialogVisible.value = false
     deleteIndex = -1
+    saveToLocalStorage()
   }
 }
+
+onMounted(() => {
+  loadData()
+})
 </script>
 
 <template>
@@ -128,7 +138,7 @@ function confirmDelete() {
         </template>
       </el-table-column>
       <el-table-column prop="createTime" label="注册时间" width="180" />
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="180">
         <template #default="{ row, $index }">
           <el-button size="small" @click="editUser(row)">
             编辑

@@ -8,6 +8,7 @@ import SvgComponent from "unplugin-svg-component/vite"
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers"
 import Components from "unplugin-vue-components/vite"
 import { defineConfig, loadEnv } from "vite"
+import { viteMockServe } from "vite-plugin-mock"
 import { VueMcp } from "vite-plugin-vue-mcp"
 import svgLoader from "vite-svg-loader"
 
@@ -36,15 +37,15 @@ export default defineConfig(({ mode }) => {
       // 是否自动打开浏览器
       open: true,
       // 反向代理
-      proxy: {
-        "/api/v1": {
-          target: "https://apifoxmock.com/m1/2930465-2145633-default",
-          // 是否为 WebSocket
-          ws: false,
-          // 是否允许跨域
-          changeOrigin: true
-        }
-      },
+      // proxy: {
+      //   "/api/v1": {
+      //     target: "https://apifoxmock.com/m1/2930465-2145633-default",
+      //     // 是否为 WebSocket
+      //     ws: false,
+      //     // 是否允许跨域
+      //     changeOrigin: true
+      //   }
+      // },
       // 是否允许跨域
       cors: true,
       // 预热常用文件，提高初始页面加载速度
@@ -102,6 +103,10 @@ export default defineConfig(({ mode }) => {
     // 插件配置
     plugins: [
       vue(),
+      viteMockServe({
+        mockPath: "mock", // mock 文件存放的目录（项目根目录下）
+        enable: true // 开发环境启用
+      }),
       // 支持将 SVG 文件导入为 Vue 组件
       svgLoader({
         defaultImport: "url",

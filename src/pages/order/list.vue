@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from "element-plus"
-import { reactive, ref } from "vue"
+import { onMounted, reactive, ref } from "vue"
 
-// 订单数据接口
 interface Order {
   id: number
   orderNo: string
@@ -12,16 +11,12 @@ interface Order {
   status: string
 }
 
-// 假数据
-const orderList = ref<Order[]>([
-  { id: 1, orderNo: "DD001", productName: "苹果", userName: "张三", amount: 10, status: "已完成" },
-  { id: 2, orderNo: "DD002", productName: "香蕉", userName: "李四", amount: 6, status: "处理中" },
-  { id: 3, orderNo: "DD003", productName: "橙子", userName: "王五", amount: 12, status: "已取消" }
-])
+const STORAGE_KEY = "ecommerce_orders"
 
-// 弹窗相关
+const orderList = ref<Order[]>([])
+
 const dialogVisible = ref(false)
-const dialogTitle = ref("新增订单")
+const dialogTitle = ref("")
 const currentOrder = reactive<Order>({
   id: 0,
   orderNo: "",
@@ -30,16 +25,31 @@ const currentOrder = reactive<Order>({
   amount: 0,
   status: "处理中"
 })
-let editId = -1 // -1 表示新增，否则为编辑的订单id
+let editId = -1
 
-// 删除弹窗相关
 const deleteDialogVisible = ref(false)
 let deleteIndex = -1
 
-// 新增订单
+function saveToLocalStorage() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(orderList.value))
+}
+
+function loadData() {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored) {
+    orderList.value = JSON.parse(stored)
+  } else {
+    orderList.value = [
+      { id: 1, orderNo: "DD001", productName: "苹果", userName: "张三", amount: 10, status: "已完成" },
+      { id: 2, orderNo: "DD002", productName: "香蕉", userName: "李四", amount: 6, status: "处理中" },
+      { id: 3, orderNo: "DD003", productName: "橙子", userName: "王五", amount: 12, status: "已取消" }
+    ]
+    saveToLocalStorage()
+  }
+}
+
 function addOrder() {
   dialogTitle.value = "新增订单"
-  // 重置表单
   currentOrder.id = 0
   currentOrder.orderNo = ""
   currentOrder.productName = ""
@@ -50,7 +60,6 @@ function addOrder() {
   dialogVisible.value = true
 }
 
-// 编辑订单
 function editOrder(row: Order) {
   dialogTitle.value = "编辑订单"
   Object.assign(currentOrder, row)
@@ -58,10 +67,8 @@ function editOrder(row: Order) {
   dialogVisible.value = true
 }
 
-// 保存订单
 function saveOrder() {
   if (editId === -1) {
-    // 新增：生成新id
     const newId = Math.max(...orderList.value.map(o => o.id), 0) + 1
     const newOrder: Order = {
       id: newId,
@@ -74,7 +81,6 @@ function saveOrder() {
     orderList.value.push(newOrder)
     ElMessage.success("新增成功")
   } else {
-    // 编辑：找到对应索引替换
     const index = orderList.value.findIndex(o => o.id === editId)
     if (index !== -1) {
       orderList.value[index] = { ...currentOrder }
@@ -82,23 +88,27 @@ function saveOrder() {
     }
   }
   dialogVisible.value = false
+  saveToLocalStorage()
 }
 
-// 删除订单（打开确认弹窗）
 function deleteOrder(index: number) {
   deleteIndex = index
   deleteDialogVisible.value = true
 }
 
-// 确认删除
 function confirmDelete() {
   if (deleteIndex !== -1) {
     orderList.value.splice(deleteIndex, 1)
     ElMessage.success("删除成功")
     deleteDialogVisible.value = false
     deleteIndex = -1
+    saveToLocalStorage()
   }
 }
+
+onMounted(() => {
+  loadData()
+})
 </script>
 
 <template>
