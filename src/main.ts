@@ -13,12 +13,16 @@ import "vxe-table/lib/style.css"
 import "@@/assets/styles/index.scss"
 import "virtual:uno.css"
 
+import piniaPluginPersistedstate from "pinia-plugin-persistedstate"
+
 // 创建应用实例
 const app = createApp(App)
 
 // 安装插件（全局组件、自定义指令等）
 installPlugins(app)
 
+// 新增：在 pinia 上使用持久化插件
+pinia.use(piniaPluginPersistedstate)
 // 安装 pinia 和 router
 app.use(pinia).use(router)
 

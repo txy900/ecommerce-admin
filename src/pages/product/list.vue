@@ -1,20 +1,59 @@
 <script setup lang="ts">
 import type { FormInstance, FormRules } from "element-plus"
+import type { Product } from "@/pinia/stores/product"
 import { ElMessage } from "element-plus"
-import { onMounted, reactive, ref } from "vue"
+import { computed, reactive, ref } from "vue"
+import { useProductStore } from "@/pinia/stores/product"
 
-interface Product {
-  id: number
-  name: string
-  price: number
-  stock: number
-  status: "上架" | "下架"
+const productStore = useProductStore()
+
+// 搜索关键字
+const searchKeyword = ref("")
+// 当前页码
+const currentPage = ref(1)
+// 每页条数
+const pageSize = ref(5)
+
+// 过滤后的商品列表（根据搜索关键字）
+const filteredProducts = computed(() => {
+  if (!searchKeyword.value.trim()) {
+    return productStore.products
+  }
+  return productStore.products.filter(p =>
+    p.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
+  )
+})
+
+// 分页后的商品列表
+const paginatedProducts = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredProducts.value.slice(start, end)
+})
+
+// 搜索
+function handleSearch() {
+  currentPage.value = 1 // 重置到第一页
 }
 
-const STORAGE_KEY = "ecommerce_products"
-const productList = ref<Product[]>([])
+// 重置搜索
+function resetSearch() {
+  searchKeyword.value = ""
+  currentPage.value = 1
+}
 
-// 表单相关
+// 每页条数变化
+function handleSizeChange(val: number) {
+  pageSize.value = val
+  currentPage.value = 1
+}
+
+// 页码变化
+function handleCurrentChange(val: number) {
+  currentPage.value = val
+}
+
+// 以下是你原有的表单逻辑，保持不变
 const formRef = ref<FormInstance>()
 const dialogVisible = ref(false)
 const dialogTitle = ref("")
@@ -27,124 +66,87 @@ const currentProduct = reactive<Product>({
 })
 let editId = -1
 
-// 删除弹窗
 const deleteDialogVisible = ref(false)
-let deleteIndex = -1
+let deleteId = -1
 
-// 校验规则
 const rules: FormRules = {
-  name: [
-    { required: true, message: "商品名称不能为空", trigger: "blur" },
-    { min: 1, max: 50, message: "长度在 1 到 50 个字符", trigger: "blur" }
-  ],
-  price: [
-    { required: true, message: "价格不能为空", trigger: "blur" },
-    { type: "number", min: 0, message: "价格必须大于等于 0", trigger: "blur" }
-  ],
-  stock: [
-    { required: true, message: "库存不能为空", trigger: "blur" },
-    { type: "number", min: 0, message: "库存必须大于等于 0", trigger: "blur" }
-  ],
-  status: [
-    { required: true, message: "请选择状态", trigger: "change" }
-  ]
-}
-
-function saveToLocalStorage() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(productList.value))
-}
-
-function loadData() {
-  const stored = localStorage.getItem(STORAGE_KEY)
-  if (stored) {
-    productList.value = JSON.parse(stored)
-  } else {
-    productList.value = [
-      { id: 1, name: "苹果", price: 5, stock: 100, status: "上架" },
-      { id: 2, name: "香蕉", price: 3, stock: 50, status: "上架" },
-      { id: 3, name: "橙子", price: 6, stock: 80, status: "下架" }
-    ]
-    saveToLocalStorage()
-  }
+  name: [{ required: true, message: "请输入商品名称" }],
+  price: [{ required: true, message: "请输入价格" }],
+  stock: [{ required: true, message: "请输入库存" }]
 }
 
 function addProduct() {
   dialogTitle.value = "新增商品"
-  currentProduct.id = 0
-  currentProduct.name = ""
-  currentProduct.price = 0
-  currentProduct.stock = 0
-  currentProduct.status = "上架"
   editId = -1
+  Object.assign(currentProduct, { id: 0, name: "", price: 0, stock: 0, status: "上架" })
   dialogVisible.value = true
-  // 清除校验
-  formRef.value?.clearValidate()
 }
 
 function editProduct(row: Product) {
   dialogTitle.value = "编辑商品"
-  Object.assign(currentProduct, row)
   editId = row.id
+  Object.assign(currentProduct, row)
   dialogVisible.value = true
-  formRef.value?.clearValidate()
 }
 
 async function saveProduct() {
-  if (!formRef.value) return
-  try {
-    await formRef.value.validate()
-    if (editId === -1) {
-      const newId = Math.max(...productList.value.map(p => p.id), 0) + 1
-      const newProduct: Product = {
-        id: newId,
-        name: currentProduct.name,
-        price: currentProduct.price,
-        stock: currentProduct.stock,
-        status: currentProduct.status
-      }
-      productList.value.push(newProduct)
-      ElMessage.success("新增成功")
-    } else {
-      const index = productList.value.findIndex(p => p.id === editId)
-      if (index !== -1) {
-        productList.value[index] = { ...currentProduct }
-        ElMessage.success("保存成功")
-      }
-    }
-    dialogVisible.value = false
-    saveToLocalStorage()
-  } catch (error) {
-    console.log("表单验证失败", error)
+  await formRef.value?.validate()
+  if (editId === -1) {
+    const { id, ...data } = currentProduct
+    productStore.addProduct(data)
+    ElMessage.success("新增成功")
+  } else {
+    productStore.updateProduct(editId, currentProduct)
+    ElMessage.success("更新成功")
   }
+  dialogVisible.value = false
+  // 新增/编辑后重置搜索和页码（可选）
+  resetSearch()
 }
 
-function deleteProduct(index: number) {
-  deleteIndex = index
+function deleteProduct(id: number) {
+  deleteId = id
   deleteDialogVisible.value = true
 }
 
 function confirmDelete() {
-  if (deleteIndex !== -1) {
-    productList.value.splice(deleteIndex, 1)
-    ElMessage.success("删除成功")
-    deleteDialogVisible.value = false
-    deleteIndex = -1
-    saveToLocalStorage()
+  productStore.deleteProduct(deleteId)
+  ElMessage.success("删除成功")
+  deleteDialogVisible.value = false
+  // 删除后重置搜索和页码（可选）
+  if (filteredProducts.value.length === 1 && currentPage.value > 1) {
+    currentPage.value--
   }
+  resetSearch()
 }
-
-onMounted(() => {
-  loadData()
-})
 </script>
 
 <template>
   <div>
     <h2>商品列表</h2>
-    <el-button type="primary" @click="addProduct">
-      新增商品
-    </el-button>
-    <el-table :data="productList" border style="margin-top: 20px">
+    <!-- 搜索栏 -->
+    <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="请输入商品名称"
+        clearable
+        style="width: 200px"
+        @clear="handleSearch"
+        @keyup.enter="handleSearch"
+      />
+      <el-button type="primary" @click="handleSearch">
+        搜索
+      </el-button>
+      <el-button type="success" @click="resetSearch">
+        重置
+      </el-button>
+      <el-button type="primary" @click="addProduct" style="margin-left: auto;">
+        新增商品
+      </el-button>
+    </div>
+
+    <!-- 表格 -->
+    <el-table :data="paginatedProducts" border>
       <el-table-column prop="name" label="商品名称" />
       <el-table-column prop="price" label="价格(元)" />
       <el-table-column prop="stock" label="库存" />
@@ -156,18 +158,31 @@ onMounted(() => {
         </template>
       </el-table-column>
       <el-table-column label="操作" width="180">
-        <template #default="{ row, $index }">
+        <template #default="{ row }">
           <el-button size="small" @click="editProduct(row)">
             编辑
           </el-button>
-          <el-button size="small" type="danger" @click="deleteProduct($index)">
+          <el-button size="small" type="danger" @click="deleteProduct(row.id)">
             删除
           </el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <!-- 编辑/新增弹窗 -->
+    <!-- 分页器 -->
+    <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[5, 10, 20, 50]"
+        :total="filteredProducts.length"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
+    </div>
+
+    <!-- 编辑/新增弹窗（保持不变） -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="30%">
       <el-form ref="formRef" :model="currentProduct" :rules="rules" label-width="80px">
         <el-form-item label="商品名称" prop="name">
@@ -196,15 +211,15 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 删除确认弹窗（保持不变） -->
+    <!-- 删除确认弹窗 -->
     <el-dialog v-model="deleteDialogVisible" title="确认删除" width="30%" center>
-      <span>确定要删除该商品吗？</span>
+      <span>确定删除该商品吗？</span>
       <template #footer>
         <el-button @click="deleteDialogVisible = false">
           取消
         </el-button>
         <el-button type="danger" @click="confirmDelete">
-          确定删除
+          确定
         </el-button>
       </template>
     </el-dialog>

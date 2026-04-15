@@ -1,206 +1,147 @@
 <script setup lang="ts">
-import type { FormInstance, FormRules } from "element-plus"
 import { ElMessage } from "element-plus"
-import { onMounted, reactive, ref } from "vue"
+import { computed, reactive, ref } from "vue"
+import { useOrderStore } from "@/pinia/stores/order"
+import { useProductStore } from "@/pinia/stores/product"
 
-interface Order {
-  id: number
-  orderNo: string
-  productName: string
-  userName: string
-  amount: number
-  status: string
-}
+const orderStore = useOrderStore()
+const productStore = useProductStore()
 
-const STORAGE_KEY = "ecommerce_orders"
-const orderList = ref<Order[]>([])
-
-const formRef = ref<FormInstance>()
 const dialogVisible = ref(false)
-const dialogTitle = ref("")
-const currentOrder = reactive<Order>({
-  id: 0,
-  orderNo: "",
-  productName: "",
-  userName: "",
-  amount: 0,
-  status: "处理中"
+const formRef = ref()
+const newOrderForm = reactive({
+  productId: null as number | null,
+  quantity: 1,
+  userName: ""
 })
-let editId = -1
 
-const deleteDialogVisible = ref(false)
-let deleteIndex = -1
+const selectedProduct = computed(() => productStore.products.find(p => p.id === newOrderForm.productId))
+const totalAmount = computed(() => (selectedProduct.value?.price || 0) * newOrderForm.quantity)
 
-const rules: FormRules = {
-  orderNo: [{ required: true, message: "订单号不能为空", trigger: "blur" }],
-  productName: [{ required: true, message: "商品名称不能为空", trigger: "blur" }],
-  userName: [{ required: true, message: "用户名不能为空", trigger: "blur" }],
-  amount: [
-    { required: true, message: "金额不能为空", trigger: "blur" },
-    { type: "number", min: 0, message: "金额必须大于等于 0", trigger: "blur" }
-  ],
-  status: [{ required: true, message: "请选择状态", trigger: "change" }]
-}
-
-function saveToLocalStorage() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(orderList.value))
-}
-
-function loadData() {
-  const stored = localStorage.getItem(STORAGE_KEY)
-  if (stored) {
-    orderList.value = JSON.parse(stored)
-  } else {
-    orderList.value = [
-      { id: 1, orderNo: "DD001", productName: "苹果", userName: "张三", amount: 10, status: "已完成" },
-      { id: 2, orderNo: "DD002", productName: "香蕉", userName: "李四", amount: 6, status: "处理中" },
-      { id: 3, orderNo: "DD003", productName: "橙子", userName: "王五", amount: 12, status: "已取消" }
-    ]
-    saveToLocalStorage()
+function createOrder() {
+  const product = selectedProduct.value
+  if (!product) {
+    ElMessage.warning("请选择商品")
+    return
   }
-}
-
-function addOrder() {
-  dialogTitle.value = "新增订单"
-  currentOrder.id = 0
-  currentOrder.orderNo = ""
-  currentOrder.productName = ""
-  currentOrder.userName = ""
-  currentOrder.amount = 0
-  currentOrder.status = "处理中"
-  editId = -1
-  dialogVisible.value = true
-  formRef.value?.clearValidate()
-}
-
-function editOrder(row: Order) {
-  dialogTitle.value = "编辑订单"
-  Object.assign(currentOrder, row)
-  editId = row.id
-  dialogVisible.value = true
-  formRef.value?.clearValidate()
-}
-
-async function saveOrder() {
-  if (!formRef.value) return
-  try {
-    await formRef.value.validate()
-    if (editId === -1) {
-      const newId = Math.max(...orderList.value.map(o => o.id), 0) + 1
-      const newOrder: Order = {
-        id: newId,
-        orderNo: currentOrder.orderNo,
-        productName: currentOrder.productName,
-        userName: currentOrder.userName,
-        amount: currentOrder.amount,
-        status: currentOrder.status
-      }
-      orderList.value.push(newOrder)
-      ElMessage.success("新增成功")
-    } else {
-      const index = orderList.value.findIndex(o => o.id === editId)
-      if (index !== -1) {
-        orderList.value[index] = { ...currentOrder }
-        ElMessage.success("保存成功")
-      }
-    }
-    dialogVisible.value = false
-    saveToLocalStorage()
-  } catch (error) {
-    console.log("表单验证失败", error)
+  if (!newOrderForm.userName) {
+    ElMessage.warning("请输入用户名")
+    return
   }
-}
-
-function deleteOrder(index: number) {
-  deleteIndex = index
-  deleteDialogVisible.value = true
-}
-
-function confirmDelete() {
-  if (deleteIndex !== -1) {
-    orderList.value.splice(deleteIndex, 1)
-    ElMessage.success("删除成功")
-    deleteDialogVisible.value = false
-    deleteIndex = -1
-    saveToLocalStorage()
+  if (newOrderForm.quantity <= 0) {
+    ElMessage.warning("数量必须大于0")
+    return
   }
+  if (product.stock < newOrderForm.quantity) {
+    ElMessage.error(`库存不足，当前库存：${product.stock}`)
+    return
+  }
+
+  // 扣减库存
+  const success = productStore.reduceStock(product.id, newOrderForm.quantity)
+  if (!success) {
+    ElMessage.error("扣减库存失败")
+    return
+  }
+
+  // 创建订单
+  orderStore.addOrder({
+    productId: product.id,
+    productName: product.name,
+    price: product.price,
+    quantity: newOrderForm.quantity,
+    totalAmount: totalAmount.value,
+    userName: newOrderForm.userName,
+    status: "待处理"
+  })
+
+  ElMessage.success("订单创建成功")
+  dialogVisible.value = false
+  // 重置表单
+  newOrderForm.productId = null
+  newOrderForm.quantity = 1
+  newOrderForm.userName = ""
 }
 
-onMounted(() => {
-  loadData()
-})
+function handleShip(order: any) {
+  orderStore.updateOrderStatus(order.id, "已发货")
+  ElMessage.success("订单已发货")
+}
+
+function handleComplete(order: any) {
+  orderStore.updateOrderStatus(order.id, "已完成")
+  ElMessage.success("订单已完成")
+}
+
+function handleDelete(id: number) {
+  orderStore.deleteOrder(id)
+  ElMessage.success("删除成功")
+}
 </script>
 
 <template>
   <div>
     <h2>订单列表</h2>
-    <el-button type="primary" @click="addOrder">
+    <el-button type="primary" @click="dialogVisible = true">
       新增订单
     </el-button>
-    <el-table :data="orderList" border style="margin-top: 20px">
-      <el-table-column prop="orderNo" label="订单号" width="180" />
+    <el-table :data="orderStore.orders" border>
+      <el-table-column prop="id" label="ID" width="60" />
       <el-table-column prop="productName" label="商品" />
+      <el-table-column prop="price" label="单价" />
+      <el-table-column prop="quantity" label="数量" />
+      <el-table-column prop="totalAmount" label="总金额" />
       <el-table-column prop="userName" label="用户" />
-      <el-table-column prop="amount" label="金额(元)" width="100" />
-      <el-table-column prop="status" label="状态" width="100">
+      <el-table-column prop="status" label="状态">
         <template #default="{ row }">
-          <el-tag :type="row.status === '已完成' ? 'success' : row.status === '处理中' ? 'warning' : 'danger'">
+          <el-tag :type="row.status === '已完成' ? 'success' : row.status === '已发货' ? 'warning' : 'info'">
             {{ row.status }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180">
-        <template #default="{ row, $index }">
-          <el-button size="small" @click="editOrder(row)">
-            编辑
+      <el-table-column prop="createTime" label="创建时间" width="160" />
+      <el-table-column label="操作" width="240">
+        <template #default="{ row }">
+          <el-button size="small" @click="handleShip(row)" v-if="row.status === '待处理'" type="success">
+            发货
           </el-button>
-          <el-button size="small" type="danger" @click="deleteOrder($index)">
+          <el-button size="small" @click="handleComplete(row)" v-if="row.status === '已发货'" type="primary">
+            完成
+          </el-button>
+          <el-button size="small" type="danger" @click="handleDelete(row.id)">
             删除
           </el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="30%">
-      <el-form ref="formRef" :model="currentOrder" :rules="rules" label-width="80px">
-        <el-form-item label="订单号" prop="orderNo">
-          <el-input v-model="currentOrder.orderNo" />
-        </el-form-item>
-        <el-form-item label="商品" prop="productName">
-          <el-input v-model="currentOrder.productName" />
-        </el-form-item>
-        <el-form-item label="用户" prop="userName">
-          <el-input v-model="currentOrder.userName" />
-        </el-form-item>
-        <el-form-item label="金额" prop="amount">
-          <el-input-number v-model="currentOrder.amount" :min="0" />
-        </el-form-item>
-        <el-form-item label="状态" prop="status">
-          <el-select v-model="currentOrder.status">
-            <el-option label="处理中" value="处理中" />
-            <el-option label="已完成" value="已完成" />
-            <el-option label="已取消" value="已取消" />
+    <!-- 创建订单弹窗（简化版，避免复杂组件） -->
+    <el-dialog v-model="dialogVisible" title="创建订单" width="30%">
+      <el-form ref="formRef" :model="newOrderForm" label-width="80px">
+        <el-form-item label="商品" required>
+          <el-select v-model="newOrderForm.productId" placeholder="请选择商品" style="width: 100%">
+            <el-option v-for="p in productStore.products" :key="p.id" :label="p.name" :value="p.id" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="数量" required>
+          <el-input v-model.number="newOrderForm.quantity" type="number" min="1" />
+        </el-form-item>
+        <el-form-item label="用户名" required>
+          <el-input v-model="newOrderForm.userName" />
+        </el-form-item>
+        <el-form-item label="单价">
+          <span>{{ selectedProduct?.price || 0 }} 元</span>
+        </el-form-item>
+        <el-form-item label="总金额">
+          <span>{{ totalAmount }} 元</span>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">
           取消
         </el-button>
-        <el-button type="primary" @click="saveOrder">
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="deleteDialogVisible" title="确认删除" width="30%" center>
-      <span>确定要删除该订单吗？</span>
-      <template #footer>
-        <el-button @click="deleteDialogVisible = false">
-          取消
-        </el-button>
-        <el-button type="danger" @click="confirmDelete">
-          确定删除
+        <el-button type="primary" @click="createOrder">
+          创建
         </el-button>
       </template>
     </el-dialog>
