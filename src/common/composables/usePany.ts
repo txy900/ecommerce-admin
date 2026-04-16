@@ -1,3 +1,5 @@
+import { ElNotification } from "element-plus"
+
 function initStarNotification() {
   setTimeout(() => {
     ElNotification({

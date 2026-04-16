@@ -2,6 +2,7 @@
 import type { RouteRecordNameGeneric, RouteRecordRaw } from "vue-router"
 import { useDevice } from "@@/composables/useDevice"
 import { isExternal } from "@@/utils/validate"
+import { ElMessage } from "element-plus"
 import { cloneDeep, debounce } from "lodash-es"
 import { usePermissionStore } from "@/pinia/stores/permission"
 import Footer from "./Footer.vue"
