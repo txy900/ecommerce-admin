@@ -1,55 +1,57 @@
-import type { Order } from "@/http/apis/order"
+import type { User } from "@/http/apis/user"
 import { ElMessage } from "element-plus"
 import { defineStore } from "pinia"
-import { ref } from "vue"
+import { computed, ref } from "vue"
 import {
-  createOrderApi,
-  deleteOrderApi,
-  getOrderListApi,
+  createUserApi,
+  deleteUserApi,
+  getUserListApi,
+  updateUserApi
 
-  updateOrderApi
-} from "@/http/apis/order"
+} from "@/http/apis/user"
 
-export const useOrderStore = defineStore(
-  "order",
+export const useUserDataStore = defineStore(
+  "userData",
   () => {
-    const list = ref<Order[]>([])
+    const list = ref<User[]>([])
     const loading = ref(false)
+
+    const totalUsers = computed(() => list.value.length)
 
     async function fetchList() {
       loading.value = true
       try {
-        const response = await getOrderListApi()
+        const response = await getUserListApi()
         list.value = response.data
         return response.data
       } catch (error) {
-        ElMessage.error("获取订单列表失败")
+        ElMessage.error("获取用户列表失败")
         throw error
       } finally {
         loading.value = false
       }
     }
 
-    async function create(data: Omit<Order, "id" | "createTime">) {
+    async function create(data: Omit<User, "id" | "createTime">) {
       loading.value = true
       try {
-        const response = await createOrderApi(data)
+        const response = await createUserApi(data)
         list.value.push(response.data)
-        ElMessage.success("创建成功")
+        ElMessage.success("新增成功")
         return response.data
       } catch (error) {
-        ElMessage.error("创建失败")
+        ElMessage.error("新增失败")
         throw error
       } finally {
         loading.value = false
       }
     }
 
-    async function update(id: number, data: Partial<Order>) {
+    async function update(id: number, data: Partial<User>) {
       loading.value = true
       try {
-        const response = await updateOrderApi(id, data)
-        const index = list.value.findIndex(o => o.id === id)
+        const response = await updateUserApi(id, data)
+        const index = list.value.findIndex(u => u.id === id)
         if (index !== -1) {
           list.value[index] = response.data
         }
@@ -63,11 +65,11 @@ export const useOrderStore = defineStore(
       }
     }
 
-    async function deleteOrder(id: number) {
+    async function deleteUser(id: number) {
       loading.value = true
       try {
-        await deleteOrderApi(id)
-        const index = list.value.findIndex(o => o.id === id)
+        await deleteUserApi(id)
+        const index = list.value.findIndex(u => u.id === id)
         if (index !== -1) {
           list.value.splice(index, 1)
         }
@@ -80,7 +82,15 @@ export const useOrderStore = defineStore(
       }
     }
 
-    return { list, loading, fetchList, create, update, deleteOrder }
+    return {
+      list,
+      loading,
+      totalUsers,
+      fetchList,
+      create,
+      update,
+      deleteUser
+    }
   },
   {
     persist: false

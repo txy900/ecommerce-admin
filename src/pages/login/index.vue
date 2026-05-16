@@ -20,23 +20,18 @@ const settingsStore = useSettingsStore()
 
 const { isFocus, handleBlur, handleFocus } = useFocus()
 
-/** 登录表单元素的引用 */
 const loginFormRef = useTemplateRef("loginFormRef")
 
-/** 登录按钮 Loading */
 const loading = ref(false)
 
-/** 验证码图片 URL */
 const codeUrl = ref("")
 
-/** 登录表单数据 */
 const loginFormData: LoginRequestData = reactive({
   username: "admin",
   password: "12345678",
   code: ""
 })
 
-/** 登录表单校验规则 */
 const loginFormRules: FormRules = {
   username: [
     { required: true, message: "请输入用户名", trigger: "blur" }
@@ -50,7 +45,6 @@ const loginFormRules: FormRules = {
   ]
 }
 
-/** 登录 */
 function handleLogin() {
   loginFormRef.value?.validate((valid) => {
     if (!valid) {
@@ -70,19 +64,14 @@ function handleLogin() {
   })
 }
 
-/** 创建验证码 */
 function createCode() {
-  // 清空已输入的验证码
   loginFormData.code = ""
-  // 清空验证图片
   codeUrl.value = ""
-  // 获取验证码图片
   getCaptchaApi().then((res) => {
-    codeUrl.value = res.data
+    codeUrl.value = res.data.captchaImage
   })
 }
 
-// 初始化验证码
 createCode()
 </script>
 

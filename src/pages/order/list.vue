@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import type { Order } from "@/http/apis/order"
 import { ElMessage } from "element-plus"
-import { computed, reactive, ref } from "vue"
+import { computed, onMounted, reactive, ref } from "vue"
 import { useOrderStore } from "@/pinia/stores/order"
 import { useProductStore } from "@/pinia/stores/product"
 
@@ -9,74 +10,90 @@ const productStore = useProductStore()
 
 const dialogVisible = ref(false)
 const formRef = ref()
+const submitLock = ref(false)
 const newOrderForm = reactive({
   productId: null as number | null,
   quantity: 1,
   userName: ""
 })
 
-const selectedProduct = computed(() => productStore.products.find(p => p.id === newOrderForm.productId))
+const selectedProduct = computed(() => productStore.list.find(p => p.id === newOrderForm.productId))
 const totalAmount = computed(() => (selectedProduct.value?.price || 0) * newOrderForm.quantity)
 
-function createOrder() {
-  const product = selectedProduct.value
-  if (!product) {
-    ElMessage.warning("请选择商品")
-    return
-  }
-  if (!newOrderForm.userName) {
-    ElMessage.warning("请输入用户名")
-    return
-  }
-  if (newOrderForm.quantity <= 0) {
-    ElMessage.warning("数量必须大于0")
-    return
-  }
-  if (product.stock < newOrderForm.quantity) {
-    ElMessage.error(`库存不足，当前库存：${product.stock}`)
-    return
-  }
+async function createOrder() {
+  if (submitLock.value) return
+  submitLock.value = true
 
-  // 扣减库存
-  const success = productStore.reduceStock(product.id, newOrderForm.quantity)
-  if (!success) {
-    ElMessage.error("扣减库存失败")
-    return
+  try {
+    const product = selectedProduct.value
+    if (!product) {
+      ElMessage.warning("请选择商品")
+      return
+    }
+    if (!newOrderForm.userName) {
+      ElMessage.warning("请输入用户名")
+      return
+    }
+    if (newOrderForm.quantity <= 0) {
+      ElMessage.warning("数量必须大于0")
+      return
+    }
+    if (product.stock < newOrderForm.quantity) {
+      ElMessage.error(`库存不足，当前库存：${product.stock}`)
+      return
+    }
+
+    await orderStore.create({
+      productId: product.id,
+      productName: product.name,
+      price: product.price,
+      quantity: newOrderForm.quantity,
+      totalAmount: totalAmount.value,
+      userName: newOrderForm.userName,
+      status: "待处理"
+    })
+
+    dialogVisible.value = false
+    newOrderForm.productId = null
+    newOrderForm.quantity = 1
+    newOrderForm.userName = ""
+  } catch (error) {
+    console.error("创建订单失败", error)
+  } finally {
+    setTimeout(() => {
+      submitLock.value = false
+    }, 1000)
   }
-
-  // 创建订单
-  orderStore.addOrder({
-    productId: product.id,
-    productName: product.name,
-    price: product.price,
-    quantity: newOrderForm.quantity,
-    totalAmount: totalAmount.value,
-    userName: newOrderForm.userName,
-    status: "待处理"
-  })
-
-  ElMessage.success("订单创建成功")
-  dialogVisible.value = false
-  // 重置表单
-  newOrderForm.productId = null
-  newOrderForm.quantity = 1
-  newOrderForm.userName = ""
 }
 
-function handleShip(order: any) {
-  orderStore.updateOrderStatus(order.id, "已发货")
-  ElMessage.success("订单已发货")
+async function handleShip(order: Order) {
+  try {
+    await orderStore.update(order.id, { status: "已发货" })
+  } catch (error) {
+    console.error("发货失败", error)
+  }
 }
 
-function handleComplete(order: any) {
-  orderStore.updateOrderStatus(order.id, "已完成")
-  ElMessage.success("订单已完成")
+async function handleComplete(order: Order) {
+  try {
+    await orderStore.update(order.id, { status: "已完成" })
+  } catch (error) {
+    console.error("完成订单失败", error)
+  }
 }
 
-function handleDelete(id: number) {
-  orderStore.deleteOrder(id)
-  ElMessage.success("删除成功")
+async function handleDelete(id: number) {
+  try {
+    await orderStore.deleteOrder(id)
+  } catch (error) {
+    console.error("删除订单失败", error)
+  }
 }
+
+onMounted(() => {
+  orderStore.fetchList()
+  productStore.fetchList()
+})
 </script>
 
 <template>
@@ -85,7 +102,7 @@ function handleDelete(id: number) {
     <el-button type="primary" @click="dialogVisible = true">
       新增订单
     </el-button>
-    <el-table :data="orderStore.orders" border>
+    <el-table :data="orderStore.list" border :loading="orderStore.loading">
       <el-table-column prop="id" label="ID" width="60" />
       <el-table-column prop="productName" label="商品" />
       <el-table-column prop="price" label="单价" />
@@ -115,12 +132,11 @@ function handleDelete(id: number) {
       </el-table-column>
     </el-table>
 
-    <!-- 创建订单弹窗（简化版，避免复杂组件） -->
     <el-dialog v-model="dialogVisible" title="创建订单" width="30%">
       <el-form ref="formRef" :model="newOrderForm" label-width="80px">
         <el-form-item label="商品" required>
           <el-select v-model="newOrderForm.productId" placeholder="请选择商品" style="width: 100%">
-            <el-option v-for="p in productStore.products" :key="p.id" :label="p.name" :value="p.id" />
+            <el-option v-for="p in productStore.list" :key="p.id" :label="p.name" :value="p.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="数量" required>
@@ -140,7 +156,7 @@ function handleDelete(id: number) {
         <el-button @click="dialogVisible = false">
           取消
         </el-button>
-        <el-button type="primary" @click="createOrder">
+        <el-button type="primary" @click="createOrder" :disabled="submitLock">
           创建
         </el-button>
       </template>

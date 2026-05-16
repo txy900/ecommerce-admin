@@ -1,19 +1,10 @@
 <script setup lang="ts">
 import type { FormInstance, FormRules } from "element-plus"
-import { ElMessage } from "element-plus"
+import type { User } from "@/http/apis/user"
 import { onMounted, reactive, ref } from "vue"
+import { useUserDataStore } from "@/pinia/stores/user-data"
 
-interface User {
-  id: number
-  username: string
-  email: string
-  role: string
-  status: string
-  createTime: string
-}
-
-const STORAGE_KEY = "ecommerce_users"
-const userList = ref<User[]>([])
+const userStore = useUserDataStore()
 
 const formRef = ref<FormInstance>()
 const dialogVisible = ref(false)
@@ -29,12 +20,7 @@ const currentUser = reactive<User>({
 let editId = -1
 
 const deleteDialogVisible = ref(false)
-let deleteIndex = -1
-
-function getCurrentTime() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
-}
+let deleteId = -1
 
 const rules: FormRules = {
   username: [
@@ -47,25 +33,6 @@ const rules: FormRules = {
   ],
   role: [{ required: true, message: "请选择角色", trigger: "change" }],
   status: [{ required: true, message: "请选择状态", trigger: "change" }]
-}
-
-function saveToLocalStorage() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(userList.value))
-}
-
-function loadData() {
-  const stored = localStorage.getItem(STORAGE_KEY)
-  if (stored) {
-    userList.value = JSON.parse(stored)
-  } else {
-    userList.value = [
-      { id: 1, username: "admin", email: "admin@example.com", role: "管理员", status: "启用", createTime: "2025-01-10 09:00" },
-      { id: 2, username: "zhang_san", email: "zhangsan@example.com", role: "普通用户", status: "启用", createTime: "2025-02-15 14:20" },
-      { id: 3, username: "li_si", email: "lisi@example.com", role: "普通用户", status: "停用", createTime: "2025-03-01 10:30" },
-      { id: 4, username: "wang_wu", email: "wangwu@example.com", role: "VIP", status: "启用", createTime: "2025-03-10 16:45" }
-    ]
-    saveToLocalStorage()
-  }
 }
 
 function addUser() {
@@ -94,49 +61,45 @@ async function saveUser() {
   try {
     await formRef.value.validate()
     if (editId === -1) {
-      const newId = Math.max(...userList.value.map(u => u.id), 0) + 1
-      const newUser: User = {
-        id: newId,
+      await userStore.create({
         username: currentUser.username,
         email: currentUser.email,
         role: currentUser.role,
-        status: currentUser.status,
-        createTime: getCurrentTime()
-      }
-      userList.value.push(newUser)
-      ElMessage.success("新增成功")
+        status: currentUser.status
+      })
     } else {
-      const index = userList.value.findIndex(u => u.id === editId)
-      if (index !== -1) {
-        const updatedUser = { ...currentUser, createTime: userList.value[index].createTime }
-        userList.value[index] = updatedUser
-        ElMessage.success("保存成功")
-      }
+      await userStore.update(editId, {
+        username: currentUser.username,
+        email: currentUser.email,
+        role: currentUser.role,
+        status: currentUser.status
+      })
     }
     dialogVisible.value = false
-    saveToLocalStorage()
   } catch (error) {
-    console.log("表单验证失败", error)
+    console.error("保存失败", error)
   }
 }
 
-function deleteUser(index: number) {
-  deleteIndex = index
+function deleteUser(user: User) {
+  deleteId = user.id
   deleteDialogVisible.value = true
 }
 
-function confirmDelete() {
-  if (deleteIndex !== -1) {
-    userList.value.splice(deleteIndex, 1)
-    ElMessage.success("删除成功")
-    deleteDialogVisible.value = false
-    deleteIndex = -1
-    saveToLocalStorage()
+async function confirmDelete() {
+  try {
+    if (deleteId !== -1) {
+      await userStore.deleteUser(deleteId)
+      deleteDialogVisible.value = false
+      deleteId = -1
+    }
+  } catch (error) {
+    console.error("删除失败", error)
   }
 }
 
 onMounted(() => {
-  loadData()
+  userStore.fetchList()
 })
 </script>
 
@@ -146,7 +109,7 @@ onMounted(() => {
     <el-button type="primary" @click="addUser">
       新增用户
     </el-button>
-    <el-table :data="userList" border style="margin-top: 20px">
+    <el-table :data="userStore.list" border style="margin-top: 20px" :loading="userStore.loading">
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="username" label="用户名" />
       <el-table-column prop="email" label="邮箱" />
@@ -160,11 +123,11 @@ onMounted(() => {
       </el-table-column>
       <el-table-column prop="createTime" label="注册时间" width="180" />
       <el-table-column label="操作" width="180">
-        <template #default="{ row, $index }">
+        <template #default="{ row }">
           <el-button size="small" @click="editUser(row)">
             编辑
           </el-button>
-          <el-button size="small" type="danger" @click="deleteUser($index)">
+          <el-button size="small" type="danger" @click="deleteUser(row)">
             删除
           </el-button>
         </template>
@@ -197,7 +160,7 @@ onMounted(() => {
         <el-button @click="dialogVisible = false">
           取消
         </el-button>
-        <el-button type="primary" @click="saveUser">
+        <el-button type="primary" @click="saveUser" :loading="userStore.loading">
           保存
         </el-button>
       </template>
@@ -209,7 +172,7 @@ onMounted(() => {
         <el-button @click="deleteDialogVisible = false">
           取消
         </el-button>
-        <el-button type="danger" @click="confirmDelete">
+        <el-button type="danger" @click="confirmDelete" :loading="userStore.loading">
           确定删除
         </el-button>
       </template>

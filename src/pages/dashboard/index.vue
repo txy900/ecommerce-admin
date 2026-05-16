@@ -1,59 +1,27 @@
-<!-- <script lang="ts" setup>
-import { useUserStore } from "@/pinia/stores/user"
-import Admin from "./components/Admin.vue"
-import Editor from "./components/Editor.vue"
-
-const userStore = useUserStore()
-
-const isAdmin = userStore.roles.includes("admin")
-</script>
-
-<template>
-  <component :is="isAdmin ? Admin : Editor" />
-</template> -->
-
 <script setup lang="ts">
 import * as echarts from "echarts"
-import { computed, onMounted, onUnmounted, ref } from "vue"
+import { computed, onMounted, onUnmounted, ref, watch } from "vue"
+import { useOrderStore } from "@/pinia/stores/order"
+import { useProductStore } from "@/pinia/stores/product"
+import { useUserDataStore } from "@/pinia/stores/user-data"
 
-// 从 localStorage 读取数据
-function getProductList() {
-  const stored = localStorage.getItem("ecommerce_products")
-  if (stored) return JSON.parse(stored)
-  return []
-}
+const productStore = useProductStore()
+const orderStore = useOrderStore()
+const userStore = useUserDataStore()
 
-function getOrderList() {
-  const stored = localStorage.getItem("ecommerce_orders")
-  if (stored) return JSON.parse(stored)
-  return []
-}
+const totalProducts = computed(() => productStore.totalProducts)
+const totalOrders = computed(() => orderStore.list.length)
+const totalUsers = computed(() => userStore.totalUsers)
+const totalStock = computed(() => productStore.totalStock)
 
-function getUserList() {
-  const stored = localStorage.getItem("ecommerce_users")
-  if (stored) return JSON.parse(stored)
-  return []
-}
-
-// 统计数据
-const totalProducts = computed(() => getProductList().length)
-const totalOrders = computed(() => getOrderList().length)
-const totalUsers = computed(() => getUserList().length)
-const totalStock = computed(() => {
-  const products = getProductList()
-  return products.reduce((sum: number, p: any) => sum + (p.stock || 0), 0)
-})
-
-// 图表
 const chartRef = ref<HTMLDivElement | null>(null)
 let chartInstance: echarts.ECharts | null = null
 
 function initChart() {
   if (!chartRef.value) return
-  // 获取商品和订单数据用于图表展示（按名称或时间，这里简单展示前5个商品销量）
-  const products = getProductList()
-  const productNames = products.slice(0, 5).map((p: any) => p.name)
-  const productSales = products.slice(0, 5).map((p: any) => p.stock || 0)
+  const products = productStore.list
+  const productNames = products.slice(0, 5).map(p => p.name)
+  const productStocks = products.slice(0, 5).map(p => p.stock)
 
   const option = {
     title: {
@@ -76,7 +44,7 @@ function initChart() {
       {
         name: "库存",
         type: "bar",
-        data: productSales,
+        data: productStocks,
         itemStyle: {
           borderRadius: [4, 4, 0, 0],
           color: "#409EFF"
@@ -87,30 +55,51 @@ function initChart() {
 
   chartInstance = echarts.init(chartRef.value)
   chartInstance.setOption(option)
-  // 响应式调整
   window.addEventListener("resize", () => chartInstance?.resize())
 }
 
-// 监听 localStorage 变化（当其他页面修改数据时，自动更新图表）
-function handleStorageChange() {
+function updateChart() {
   if (chartInstance) {
-    const products = getProductList()
-    const productNames = products.slice(0, 5).map((p: any) => p.name)
-    const productSales = products.slice(0, 5).map((p: any) => p.stock || 0)
+    const products = productStore.list
+    const productNames = products.slice(0, 5).map(p => p.name)
+    const productStocks = products.slice(0, 5).map(p => p.stock)
     chartInstance.setOption({
       xAxis: { data: productNames },
-      series: [{ data: productSales }]
+      series: [{ data: productStocks }]
     })
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await Promise.all([
+    productStore.fetchList(),
+    orderStore.fetchList(),
+    userStore.fetchList()
+  ])
   initChart()
-  window.addEventListener("storage", handleStorageChange)
 })
 
+watch(
+  () => productStore.list,
+  () => {
+    updateChart()
+  },
+  { deep: true }
+)
+
+watch(
+  () => orderStore.list,
+  () => {},
+  { deep: true }
+)
+
+watch(
+  () => userStore.list,
+  () => {},
+  { deep: true }
+)
+
 onUnmounted(() => {
-  window.removeEventListener("storage", handleStorageChange)
   chartInstance?.dispose()
 })
 </script>
@@ -118,7 +107,6 @@ onUnmounted(() => {
 <template>
   <div>
     <h2>控制台</h2>
-    <!-- 统计卡片 -->
     <el-row :gutter="20">
       <el-col :span="6">
         <el-card shadow="hover">
@@ -162,7 +150,6 @@ onUnmounted(() => {
       </el-col>
     </el-row>
 
-    <!-- 图表区域 -->
     <el-card style="margin-top: 20px">
       <div ref="chartRef" style="width: 100%; height: 400px;" />
     </el-card>

@@ -1,59 +1,48 @@
 <script setup lang="ts">
 import type { FormInstance, FormRules } from "element-plus"
-import type { Product } from "@/pinia/stores/product"
-import { ElMessage } from "element-plus"
-import { computed, reactive, ref } from "vue"
+import type { Product } from "@/http/apis/product"
+import { computed, onMounted, reactive, ref } from "vue"
 import { useProductStore } from "@/pinia/stores/product"
 
 const productStore = useProductStore()
 
-// 搜索关键字
 const searchKeyword = ref("")
-// 当前页码
 const currentPage = ref(1)
-// 每页条数
 const pageSize = ref(5)
 
-// 过滤后的商品列表（根据搜索关键字）
 const filteredProducts = computed(() => {
   if (!searchKeyword.value.trim()) {
-    return productStore.products
+    return productStore.list
   }
-  return productStore.products.filter(p =>
+  return productStore.list.filter(p =>
     p.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
   )
 })
 
-// 分页后的商品列表
 const paginatedProducts = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
   return filteredProducts.value.slice(start, end)
 })
 
-// 搜索
 function handleSearch() {
-  currentPage.value = 1 // 重置到第一页
+  currentPage.value = 1
 }
 
-// 重置搜索
 function resetSearch() {
   searchKeyword.value = ""
   currentPage.value = 1
 }
 
-// 每页条数变化
 function handleSizeChange(val: number) {
   pageSize.value = val
   currentPage.value = 1
 }
 
-// 页码变化
 function handleCurrentChange(val: number) {
   currentPage.value = val
 }
 
-// 以下是你原有的表单逻辑，保持不变
 const formRef = ref<FormInstance>()
 const dialogVisible = ref(false)
 const dialogTitle = ref("")
@@ -90,18 +79,19 @@ function editProduct(row: Product) {
 }
 
 async function saveProduct() {
-  await formRef.value?.validate()
-  if (editId === -1) {
-    const { id, ...data } = currentProduct
-    productStore.addProduct(data)
-    ElMessage.success("新增成功")
-  } else {
-    productStore.updateProduct(editId, currentProduct)
-    ElMessage.success("更新成功")
+  try {
+    await formRef.value?.validate()
+    if (editId === -1) {
+      const { id, ...data } = currentProduct
+      await productStore.create(data)
+    } else {
+      await productStore.update(editId, currentProduct)
+    }
+    dialogVisible.value = false
+    resetSearch()
+  } catch (error) {
+    console.error("保存失败", error)
   }
-  dialogVisible.value = false
-  // 新增/编辑后重置搜索和页码（可选）
-  resetSearch()
 }
 
 function deleteProduct(id: number) {
@@ -109,22 +99,27 @@ function deleteProduct(id: number) {
   deleteDialogVisible.value = true
 }
 
-function confirmDelete() {
-  productStore.deleteProduct(deleteId)
-  ElMessage.success("删除成功")
-  deleteDialogVisible.value = false
-  // 删除后重置搜索和页码（可选）
-  if (filteredProducts.value.length === 1 && currentPage.value > 1) {
-    currentPage.value--
+async function confirmDelete() {
+  try {
+    await productStore.deleteProduct(deleteId)
+    deleteDialogVisible.value = false
+    if (filteredProducts.value.length === 0 && currentPage.value > 1) {
+      currentPage.value--
+    }
+    resetSearch()
+  } catch (error) {
+    console.error("删除失败", error)
   }
-  resetSearch()
 }
+
+onMounted(() => {
+  productStore.fetchList()
+})
 </script>
 
 <template>
   <div>
     <h2>商品列表</h2>
-    <!-- 搜索栏 -->
     <div style="margin-bottom: 20px; display: flex; gap: 10px;">
       <el-input
         v-model="searchKeyword"
@@ -145,8 +140,7 @@ function confirmDelete() {
       </el-button>
     </div>
 
-    <!-- 表格 -->
-    <el-table :data="paginatedProducts" border>
+    <el-table :data="paginatedProducts" border :loading="productStore.loading">
       <el-table-column prop="name" label="商品名称" />
       <el-table-column prop="price" label="价格(元)" />
       <el-table-column prop="stock" label="库存" />
@@ -169,7 +163,6 @@ function confirmDelete() {
       </el-table-column>
     </el-table>
 
-    <!-- 分页器 -->
     <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
       <el-pagination
         v-model:current-page="currentPage"
@@ -182,7 +175,6 @@ function confirmDelete() {
       />
     </div>
 
-    <!-- 编辑/新增弹窗（保持不变） -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="30%">
       <el-form ref="formRef" :model="currentProduct" :rules="rules" label-width="80px">
         <el-form-item label="商品名称" prop="name">
@@ -205,20 +197,19 @@ function confirmDelete() {
         <el-button @click="dialogVisible = false">
           取消
         </el-button>
-        <el-button type="primary" @click="saveProduct">
+        <el-button type="primary" @click="saveProduct" :loading="productStore.loading">
           保存
         </el-button>
       </template>
     </el-dialog>
 
-    <!-- 删除确认弹窗 -->
     <el-dialog v-model="deleteDialogVisible" title="确认删除" width="30%" center>
       <span>确定删除该商品吗？</span>
       <template #footer>
         <el-button @click="deleteDialogVisible = false">
           取消
         </el-button>
-        <el-button type="danger" @click="confirmDelete">
+        <el-button type="danger" @click="confirmDelete" :loading="productStore.loading">
           确定
         </el-button>
       </template>
