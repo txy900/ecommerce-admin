@@ -68,7 +68,7 @@ function createCode() {
   loginFormData.code = ""
   codeUrl.value = ""
   getCaptchaApi().then((res) => {
-    codeUrl.value = res.data.captchaImage
+    codeUrl.value = res.data.captchaImage  // @ts-ignore
   })
 }
 
